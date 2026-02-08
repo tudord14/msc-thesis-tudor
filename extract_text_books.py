@@ -7,6 +7,7 @@ import unicodedata
 import gc
 import psutil
 import os
+import json
 
 # -> we have around 5000 books -> around 160GB of pdfs
 # -> in this script we will try and extract text from all the books in Romanian that I have scraped off the web
@@ -16,12 +17,29 @@ import os
 PDF_FOLDER = r"/Volumes/KINGSTON/Text_Data/libgen/"  
 OUTPUT_FOLDER = r"/Volumes/KINGSTON/Extracted_Texts/"
 STATS_FILE = r"/Volumes/KINGSTON/extraction_stats.txt"
+CHECKPOINT_FILE = r"/Volumes/KINGSTON/extraction_checkpoint.json"
 Path(OUTPUT_FOLDER).mkdir(exist_ok=True)
 
 # -> skip book if short, has too many weird characters, or has too many newlines (bad formatting)
 MIN_TEXT_LENGTH = 500 
 MAX_NEWLINE_RATIO = 0.25  
 MIN_READABLE_CHARS = 0.85 
+
+# -> this function will load a checkpoint file that keeps track if pdfs already processed
+def load_checkpoint():
+    if Path(CHECKPOINT_FILE).exists():
+        with open(CHECKPOINT_FILE, "r") as f:
+            return json.load(f)
+    return {"processed": [], "stats": {"success": 0, "skip": 0, "no_text": 0, "gibberish": 0, "error": 0}}
+
+# -> this function will save the checkpoint after each batch is processed
+def save_checkpoint(checkpoint):
+    with open(CHECKPOINT_FILE, "w") as f:
+        json.dump(checkpoint, f, indent=2)
+
+# -> get a set of already extracted books to avoid reprocessing
+def get_already_extracted():
+    return {f.stem for f in Path(OUTPUT_FOLDER).glob("*.txt")} 
 
 # -> check if the text of a book is mostly gibberish (bad formatting, scanned images, or corrupted)
 def is_gibberish(text):
@@ -121,9 +139,24 @@ def extract_single_pdf(pdf_file):
 
 # -> main execution block to process all PDFs in parallel and summarize results
 if __name__ == "__main__":
-    pdf_files = [f for f in Path(PDF_FOLDER).glob("*.pdf") if not f.name.startswith("._")]
-    total = len(pdf_files)    
-    print(f"found {total} PDFs")
+    checkpoint = load_checkpoint()
+    already_extracted = get_already_extracted()
+    
+    pdf_files = sorted([f for f in Path(PDF_FOLDER).glob("*.pdf") if not f.name.startswith("._")])
+    pdf_files_to_process = [f for f in pdf_files if f.stem not in already_extracted and f.name not in checkpoint["processed"]]
+    
+    total = len(pdf_files)
+    already_done = len(already_extracted)
+    remaining = len(pdf_files_to_process)
+    
+    print(f"total PDFs found: {total}")
+    print(f"already extracted: {already_done}")
+    print(f"remaining to process: {remaining}")
+    print()
+    
+    if remaining == 0:
+        print("all PDFs have been extracted!")
+        exit()
     
     available_ram = psutil.virtual_memory().available / (1024 * 1024 * 1024)
     print(f"available RAM: {available_ram:.1f}GB")
@@ -148,17 +181,20 @@ if __name__ == "__main__":
         "error": []
     }
     
-    for batch_idx in range(0, len(pdf_files), BATCH_SIZE):
-        batch = pdf_files[batch_idx:batch_idx + BATCH_SIZE]
-        number_of_books_extracted = len(list(Path(OUTPUT_FOLDER).glob("*.txt")))
-        print(f"processing batch {batch_idx // BATCH_SIZE + 1} ({number_of_books_extracted}/{total} extracted)")
+    for batch_idx in range(0, len(pdf_files_to_process), BATCH_SIZE):
+        batch = pdf_files_to_process[batch_idx:batch_idx + BATCH_SIZE]
+        processed_so_far = already_done + batch_idx
+        print(f"processing batch {batch_idx // BATCH_SIZE + 1} ({processed_so_far}/{total} total extracted)")
         
         with Pool(MAX_WORKERS) as pool:
             results = pool.map(extract_single_pdf, batch)
         
         for status, filename, info in results:
             stats[status].append((filename, info))
+            checkpoint["processed"].append(filename)
+            checkpoint["stats"][status] = checkpoint["stats"].get(status, 0) + 1
         
+        save_checkpoint(checkpoint)
         gc.collect()
         current_ram = psutil.virtual_memory().available / (1024 * 1024 * 1024)
         if current_ram < 0.5:
