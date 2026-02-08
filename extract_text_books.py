@@ -55,11 +55,10 @@ def clean_text(text):
     return text.strip()
 
 def extract_with_pdfplumber(pdf_file):
-    """Try pdfplumber - EXTRACT ALL PAGES"""
     try:
         with pdfplumber.open(pdf_file) as pdf:
             text = ""
-            for page in pdf.pages:  # ← REMOVED [:20] LIMIT
+            for page in pdf.pages:
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text + "\n"
@@ -68,13 +67,12 @@ def extract_with_pdfplumber(pdf_file):
         return None
 
 def extract_with_pypdf2(pdf_file):
-    """Fallback to PyPDF2 - EXTRACT ALL PAGES"""
     try:
         with open(pdf_file, 'rb') as f:
             reader = PyPDF2.PdfReader(f)
             text = ""
             
-            for page_num in range(len(reader.pages)):  # ← CHANGED: min(20, ...) → len(...)
+            for page_num in range(len(reader.pages)): 
                 try:
                     page_text = reader.pages[page_num].extract_text()
                     if page_text:
