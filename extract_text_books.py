@@ -6,14 +6,13 @@ import re
 import unicodedata
 import gc
 import psutil
-import os
 import json
+import time
 
 # -> we have around 5000 books -> around 160GB of pdfs
 # -> in this script we will try and extract text from all the books in Romanian that I have scraped off the web
 # -> as some of the books are poorly scanned and formatted we will make a type of script that skips books according to some quality checks
 # -> as the books are quite large we will also use multiprocessing to speed up the process
-
 PDF_FOLDER = r"/Volumes/KINGSTON/Text_Data/libgen/"  
 OUTPUT_FOLDER = r"/Volumes/KINGSTON/Extracted_Texts/"
 STATS_FILE = r"/Volumes/KINGSTON/extraction_stats.txt"
@@ -25,12 +24,12 @@ MIN_TEXT_LENGTH = 500
 MAX_NEWLINE_RATIO = 0.25  
 MIN_READABLE_CHARS = 0.85 
 
-# -> this function will load a checkpoint file that keeps track if pdfs already processed
+# -> this function will load a checkpoint file that keeps track of stats from previous runs
 def load_checkpoint():
     if Path(CHECKPOINT_FILE).exists():
         with open(CHECKPOINT_FILE, "r") as f:
             return json.load(f)
-    return {"processed": [], "stats": {"success": 0, "skip": 0, "no_text": 0, "gibberish": 0, "error": 0}}
+    return {"stats": {"success": 0, "skip": 0, "no_text": 0, "gibberish": 0, "error": 0}}
 
 # -> this function will save the checkpoint after each batch is processed
 def save_checkpoint(checkpoint):
@@ -39,7 +38,7 @@ def save_checkpoint(checkpoint):
 
 # -> get a set of already extracted books to avoid reprocessing
 def get_already_extracted():
-    return {f.stem for f in Path(OUTPUT_FOLDER).glob("*.txt")} 
+    return {f.stem for f in Path(OUTPUT_FOLDER).glob("*.txt")}
 
 # -> check if the text of a book is mostly gibberish (bad formatting, scanned images, or corrupted)
 def is_gibberish(text):
@@ -66,7 +65,7 @@ def clean_text(text):
     text = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C" or ch in "\n\t\r")
     text = text.encode('utf-8', errors='ignore').decode('utf-8')
     
-    # -> fix  split words
+    # -> fix split words
     text = re.sub(r'(\w+)-\n(\w+)', r'\1\2', text)
     
     # -> fix spacing
@@ -105,7 +104,6 @@ def extract_with_pypdf2(pdf_file):
     except:
         return None
 
-
 # -> main function to extract text from a single PDF and apply quality checks
 def extract_single_pdf(pdf_file):
     try:
@@ -116,6 +114,7 @@ def extract_single_pdf(pdf_file):
         if file_size_mb > 100:
             return ("skip", pdf_file.name, f"file too large: {file_size_mb:.1f}MB")
         
+        # -> first we try to extract with pdfplumber, if it fails we fallback to pypdf2
         text = extract_with_pdfplumber(pdf_file)
         if not text:
             text = extract_with_pypdf2(pdf_file)
@@ -126,6 +125,7 @@ def extract_single_pdf(pdf_file):
         if is_gibberish(text):
             return ("gibberish", pdf_file.name, "bad formatting/corrupted")
         
+        # -> clean and save
         text = clean_text(text)
         output_file = Path(OUTPUT_FOLDER) / f"{pdf_file.stem}.txt"
         with open(output_file, "w", encoding="utf-8") as f:
@@ -143,7 +143,7 @@ if __name__ == "__main__":
     already_extracted = get_already_extracted()
     
     pdf_files = sorted([f for f in Path(PDF_FOLDER).glob("*.pdf") if not f.name.startswith("._")])
-    pdf_files_to_process = [f for f in pdf_files if f.stem not in already_extracted and f.name not in checkpoint["processed"]]
+    pdf_files_to_process = [f for f in pdf_files if f.stem not in already_extracted]
     
     total = len(pdf_files)
     already_done = len(already_extracted)
@@ -162,11 +162,9 @@ if __name__ == "__main__":
     print(f"available RAM: {available_ram:.1f}GB")
     
     if available_ram < 2.0:
-        print("WARNING: less than 2GB RAM available, reducing batch size to 1")
         BATCH_SIZE = 1
         MAX_WORKERS = 1
     elif available_ram < 4.0:
-        print("WARNING: less than 4GB RAM available, reducing batch size to 2")
         BATCH_SIZE = 2
         MAX_WORKERS = 1
     else:
@@ -191,24 +189,20 @@ if __name__ == "__main__":
         
         for status, filename, info in results:
             stats[status].append((filename, info))
-            checkpoint["processed"].append(filename)
             checkpoint["stats"][status] = checkpoint["stats"].get(status, 0) + 1
         
         save_checkpoint(checkpoint)
         gc.collect()
         current_ram = psutil.virtual_memory().available / (1024 * 1024 * 1024)
         if current_ram < 0.5:
-            print(f"WARNING: RAM critically low ({current_ram:.2f}GB), pausing for 3 seconds...")
-            import time
+            print(f"warning: RAM low ({current_ram:.2f}GB) pausing for 3 seconds")
             time.sleep(3)
 
-    print("^"*70)
     print(f"success: {len(stats['success']):5d} books extracted -> the good data")
-    print(f" skip: {len(stats['skip']):5d} mac system files")
-    print(f" no_text: {len(stats['no_text']):5d} scanned/unreadable")
-    print(f" gibberish: {len(stats['gibberish']):5d} bad formatting")
-    print(f" error: {len(stats['error']):5d} corrupted PDFs")
-    print("^"*70)
+    print(f"skip: {len(stats['skip']):5d} mac system files")
+    print(f"no_text: {len(stats['no_text']):5d} scanned/unreadable")
+    print(f"gibberish: {len(stats['gibberish']):5d} bad formatting")
+    print(f"error: {len(stats['error']):5d} corrupted PDFs")
     
     # -> save detailed stats to a file for manual review
     with open(STATS_FILE, "w") as f:
