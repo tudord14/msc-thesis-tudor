@@ -1,6 +1,5 @@
 # msc-thesis-tudor
 
-
 a) **Data stage:** </br>
 - here i have already built a 20GB jsonl file of web crawled Romanian text which we will use for training </br>
 - I also have around 5000 books in Romanian (170GB), in pdf format, which I have written a script to extract the text out of them -> we got around 3000 .txt clean files out of all of these (the others were in other formats or needed advanced OCR and time was not enough...)</br>
@@ -11,7 +10,15 @@ a) **Data stage:** </br>
 - I have written the script that trains the tokenizer for our model (we use BPE with 40k vocab trained on the whole corpus -> web+books) </br>
 - finally concatenated the big final file that contains the web + books -> 21.93GB </br>
 - trained the BPE 40k vocab size tokenizer </br>
-- after tokenizing the full corpus, I have successfully packed the whole final corpus into 2048 length context blocks so we don't have to use padding and waste GPU compute time </br>
+- after tokenizing the full corpus, I have successfully packed the whole final corpus into 2048 length context blocks so we don't have to use padding and waste GPU compute time -> around 30GB of tokens</br>
 - we are practically ready for training right now: corpus and tokenizer in place </br>
 
 b) **Pretraining:** </br>
+- we officially have 5,635,137,681 tokens in our training dataset!! (using a vocab size of 40.000)</br>
+- we also have the training code for some model architectures that we want to try: </br>
+1) Llama GQA: 4 KV heads for 16 Q heads; 23 layers -> aroudn 300M params
+2) Mistral Sliding Window Attention + GQA: 23 layers -> around 300M params just like Llama
+3) Falcon parallel attention + MQA: 1 KV head; 25 layers -> around 307M params
+4) Mamba2 State space model: no attention, 40 layers -> 305M params
+5) Llama MHA standard baseline attention transformer: 21 layers -> 311M params
+- Tuesday 17 February we start the training of the first model!
