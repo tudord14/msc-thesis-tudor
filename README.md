@@ -21,4 +21,4 @@ b) **Pretraining:** </br>
 3) Falcon parallel attention + MQA: 1 KV head; 25 layers -> around 307M params
 4) Mamba2 State space model: no attention, 40 layers -> 305M params
 5) Llama MHA standard baseline attention transformer: 21 layers -> 311M params
-- Tuesday 17 February we start the training of the first model!
+- Tuesday 17 February: Llama GQA 300.3M Parameters Model start training at 14:50, it will take approx. 40 hours, without the evaluation step which isn't more than 10 minutes once every 2000 steps; after this model finishes we can start the Mistral GQA Sliding Attention 300.3M Parameters Model
