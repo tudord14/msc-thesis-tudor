@@ -22,4 +22,4 @@ b) **Pretraining:** </br>
 4) Mamba2 State space model: no attention, 40 layers -> 305M params
 5) Llama MHA standard baseline attention transformer: 21 layers -> 311M params
 6) My personal transformer model where I created a specialized Attention mechanism specifically built for small language models (more to be explained later...)
-- Tuesday 17 February: Llama GQA 300.3M Parameters Model start training at 14:50, it will take approx. 40 hours, without the evaluation step which isn't more than 10 minutes once every 2000 steps; after this model finishes we can start the Mistral GQA Sliding Attention 300.3M Parameters Model
+- Tuesday 17 February: Llama GQA 300.3M Parameters Model start training at 18:15, it will take approx. 40 hours, without the evaluation step which isn't more than 10 minutes once every 2000 steps; after this model finishes we can start the Mistral GQA Sliding Attention 300.3M Parameters Model
