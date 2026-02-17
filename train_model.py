@@ -85,17 +85,17 @@ falcon_config = FalconConfig(
 # -> no attention mechanism at all — uses selective state spaces
 # -> SSM layers have fewer params than transformer layers -> need more layers
 # -> 40 layers -> ~305M params
-mamba_config = Mamba2Config(
-    vocab_size=VOCAB_SIZE,
-    hidden_size=HIDDEN_SIZE,
-    num_hidden_layers=40,
-    state_size=128,
-    expand=2,
-    n_groups=1,
-    rms_norm=True,
-    chunk_size=256,
-    tie_word_embeddings=True
-)
+# mamba_config = Mamba2Config(
+#     vocab_size=VOCAB_SIZE,
+#     hidden_size=HIDDEN_SIZE,
+#     num_hidden_layers=40,
+#     state_size=128,
+#     expand=2,
+#     n_groups=1,
+#     rms_norm=True,
+#     chunk_size=256,
+#     tie_word_embeddings=True
+# )
 
 # 5. LLAMA-MHA —> Standard Multi-Head Attention (baseline)
 # -> every head has its own KV —> maximum representational power, most KV memory
@@ -118,7 +118,7 @@ arch_selectors = [
     (LlamaForCausalLM, llama_config, 'llama_gqa'),
     (MistralForCausalLM, mistral_config, 'mistral_sliding'),
     (FalconForCausalLM, falcon_config, 'falcon_mqa'),
-    (Mamba2ForCausalLM, mamba_config, 'mamba2_ssm'),
+#    (Mamba2ForCausalLM, mamba_config, 'mamba2_ssm'),
     (LlamaForCausalLM, llama_mha_config, 'llama_mha_baseline'),
 ]
 
@@ -147,7 +147,15 @@ TRAINING_CORPUS = '/Volumes/KINGSTON/Packed_File.jsonl'
 OUTPUT_DIR = 'output'
 # -> tokenizer only needed for the data collator (padding/eos token config)
 tokenizer = PreTrainedTokenizerFast(tokenizer_file=TOKENIZER_NAME)
-tokenizer.pad_token = tokenizer.eos_token
+tokenizer.pad_token = "<pad>"
+tokenizer.bos_token = "<s>"
+tokenizer.eos_token = "</s>"
+tokenizer.unk_token = "<unk>"
+
+tokenizer.bos_token_id = tokenizer.convert_tokens_to_ids("<s>")
+tokenizer.eos_token_id = tokenizer.convert_tokens_to_ids("</s>")
+tokenizer.unk_token_id = tokenizer.convert_tokens_to_ids("<unk>")
+tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<pad>")
 
 def add_labels(examples):
     # -> for causal LM, labels = input_ids (model shifts them internally)
@@ -167,9 +175,9 @@ print(f"train: {len(dataset['train'])} sequences | eval: {len(dataset['test'])} 
 print("initializing training arguments...")
 training_args = TrainingArguments(
     output_dir=OUTPUT_DIR,
-    per_device_train_batch_size=4,
+    per_device_train_batch_size=12,
     per_device_eval_batch_size=4,
-    gradient_accumulation_steps=8,
+    gradient_accumulation_steps=4,
     learning_rate=2e-4,
     lr_scheduler_type='cosine',
     warmup_steps=100,
