@@ -16,10 +16,11 @@ a) **Data stage:** </br>
 b) **Pretraining:** </br>
 - we officially have 5,635,137,681 tokens in our training dataset!! (using a vocab size of 40.000)</br>
 - we also have the training code for some model architectures that we want to try: </br>
-1) Llama GQA: 4 KV heads for 16 Q heads; 23 layers -> aroudn 300M params
-2) Mistral Sliding Window Attention + GQA: 23 layers -> around 300M params just like Llama
-3) Falcon parallel attention + MQA: 1 KV head; 25 layers -> around 307M params
-4) Mamba2 State space model: no attention, 40 layers -> 305M params
-5) Llama MHA standard baseline attention transformer: 21 layers -> 311M params
-6) My personal transformer model where I created a specialized Attention mechanism specifically built for small language models (more to be explained later...)
-- Tuesday 17 February: Llama GQA 300.3M Parameters Model start training at 18:15, it will take approx. 40 hours, without the evaluation step which isn't more than 10 minutes once every 2000 steps; after this model finishes we can start the Mistral GQA Sliding Attention 300.3M Parameters Model
+1) Llama GQA: 4 KV heads for 16 Q heads; 23 layers -> aroudn 300M params </br>
+   -> Training Time: 17-19 February (39h52m) - 1.25it/s
+3) Mistral Sliding Window Attention + GQA: 23 layers -> around 300M params just like Llama </br>
+   -> Training Time: 19-.. February (51h44m) - 1.63it/s
+4) Falcon parallel attention + MQA: 1 KV head; 25 layers -> around 307M params
+5) Mamba2 State space model: no attention, 40 layers -> 305M params
+6) Llama MHA standard baseline attention transformer: 21 layers -> 311M params
+7) My personal transformer model where I created a specialized Attention mechanism specifically built for small language models (more to be explained later...)
