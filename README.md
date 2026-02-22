@@ -22,6 +22,9 @@ b) **Pretraining:** </br>
    -> Training Time: 19-21 February (51h44m) - 1.63it/s
 4) Falcon parallel attention + MQA: 1 KV head; 25 layers -> around 307M params </br>
    -> Training Time: 22-.. February (46h42m) - 1.47it/s
-6) Mamba2 State space model: no attention, 40 layers -> 305M params
+6) !!!DIFFICULT IMPLEMENTATION!!! Mamba2 State space model: no attention, 40 layers -> 305M params
 7) Llama MHA standard baseline attention transformer: 21 layers -> 311M params
-8) My personal transformer model where I created a specialized Attention mechanism specifically built for small language models (more to be explained later...)
+
+c) **Evaluation and Quantization**
+- we will essentially quantize all the models into small variants and evaluate all the model on the same tasks </br>
+- we will teste efficiency (RAM, storage, tokens per second, time to first token, etc...) and performance on perplexity and other Romanian tasks (to be decided...) </br>
