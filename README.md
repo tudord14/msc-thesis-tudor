@@ -21,9 +21,9 @@ b) **Pretraining:** </br>
 3) Mistral Sliding Window Attention + GQA: 23 layers -> around 300M params just like Llama </br>
    -> Training Time: 19-21 February (51h44m) - 1.63it/s
 4) Falcon parallel attention + MQA: 1 KV head; 25 layers -> around 307M params </br>
-   -> Training Time: 22-.. February (46h42m) - 1.47it/s
-6) !!!DIFFICULT IMPLEMENTATION!!! Mamba2 State space model: no attention, 40 layers -> 305M params
-7) Llama MHA standard baseline attention transformer: 21 layers -> 311M params
+   -> Training Time: 22-24 February (46h42m) - 1.47it/s
+5) Llama MHA standard baseline attention transformer: 21 layers -> 311M params </br>
+-> we now have basically finished the training stage, we have the first 3 models Llama, Mistral and Falcon and can start the quantization
 
 c) **Evaluation and Quantization**
 - we will essentially quantize all the models into small variants and evaluate all the model on the same tasks </br>
