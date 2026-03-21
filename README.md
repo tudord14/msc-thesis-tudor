@@ -18,13 +18,19 @@ b) **Pretraining:** </br>
 - we also have the training code for some model architectures that we want to try: </br>
 1) Llama GQA: 4 KV heads for 16 Q heads; 23 layers -> aroudn 300M params </br>
    -> Training Time: 17-19 February (39h52m) - 1.25it/s
-3) Mistral Sliding Window Attention + GQA: 23 layers -> around 300M params just like Llama </br>
+2) Mistral Sliding Window Attention + GQA: 23 layers -> around 300M params just like Llama </br>
    -> Training Time: 19-21 February (51h44m) - 1.63it/s
-4) Falcon parallel attention + MQA: 1 KV head; 25 layers -> around 307M params </br>
+3) Falcon parallel attention + MQA: 1 KV head; 25 layers -> around 307M params </br>
    -> Training Time: 22-24 February (46h42m) - 1.47it/s
-5) Llama MHA standard baseline attention transformer: 21 layers -> 311M params </br>
+4) Llama MHA standard baseline attention transformer: 21 layers -> 311M params </br>
+   -> Training Time: 20-22 March (42h) - 1.31it/s
 -> we now have basically finished the training stage, we have the first 3 models Llama, Mistral and Falcon and can start the quantization
 
 c) **Evaluation and Quantization**
 - we will essentially quantize all the models into small variants and evaluate all the model on the same tasks </br>
 - we will teste efficiency (RAM, storage, tokens per second, time to first token, etc...) and performance on perplexity and other Romanian tasks (to be decided...) </br>
+- Week 16-22 March: </br>
+   -> We have successfully quantized all **four** models into four variants: FP16 GGUF, Q8_0, Q4_K_M, Q5_K_M  </br>
+   -> We tested Perplexity for all models and did the comparison with RO-GPT2 medium and large, and LLMic </br>
+   
+
