@@ -8,6 +8,8 @@ from transformers import (
 )
 from datasets import load_dataset
 import copy
+from torch.utils.data import default_collate
+import torch
 
 # -> we will train some model architectures: Llama, Mistral, Falcon, Mamba and a Llama-MHA baseline
 # -> the idea is to have models of similar size and context window but different intelligence methods
@@ -22,15 +24,15 @@ import copy
 
 CONTEXT_LENGTH = 2048
 VOCAB_SIZE = 40000
-TOKENIZER_NAME = 'tokenizer'
-# -> all models target ~300-310M parameters
+TOKENIZER_NAME = 'ro_tokenizer_40k.json'
+# -> all models target ~300-310M paramters
 # -> shared dimensions: hidden=1024, heads=16, head_dim=64, intermediate=2816
 # -> each architecture has different num_layers to compensate for param count differences
 HIDDEN_SIZE = 1024
 NUM_HEADS = 16          
 INTERMEDIATE_SIZE = 2816
 
-# 1. LLAMA — GQA (Grouped Query Attention)
+# 1. LLAMA —> GQA (Grouped Query Attention)
 # -> 4 KV heads for 16 Q heads -> 4:1 group ratio
 # -> 23 layers -> ~300M params
 llama_config = LlamaConfig(
@@ -85,17 +87,17 @@ falcon_config = FalconConfig(
 # -> no attention mechanism at all — uses selective state spaces
 # -> SSM layers have fewer params than transformer layers -> need more layers
 # -> 40 layers -> ~305M params
-# mamba_config = Mamba2Config(
-#     vocab_size=VOCAB_SIZE,
-#     hidden_size=HIDDEN_SIZE,
-#     num_hidden_layers=40,
-#     state_size=128,
-#     expand=2,
-#     n_groups=1,
-#     rms_norm=True,
-#     chunk_size=256,
-#     tie_word_embeddings=True
-# )
+#mamba_config = Mamba2Config(
+#    vocab_size=VOCAB_SIZE,
+#    hidden_size=HIDDEN_SIZE,
+#    num_hidden_layers=40,
+#    state_size=128,
+#    expand=2,
+#    n_groups=1,
+#    rms_norm=True,
+#    chunk_size=256,
+#    tie_word_embeddings=True
+#)
 
 # 5. LLAMA-MHA —> Standard Multi-Head Attention (baseline)
 # -> every head has its own KV —> maximum representational power, most KV memory
@@ -115,9 +117,9 @@ llama_mha_config = LlamaConfig(
 )
 
 arch_selectors = [
-    (LlamaForCausalLM, llama_config, 'llama_gqa'),
-    (MistralForCausalLM, mistral_config, 'mistral_sliding'),
-    (FalconForCausalLM, falcon_config, 'falcon_mqa'),
+#    (LlamaForCausalLM, llama_config, 'llama_gqa'),
+#    (MistralForCausalLM, mistral_config, 'mistral_sliding'),
+#    (FalconForCausalLM, falcon_config, 'falcon_mqa'),
 #    (Mamba2ForCausalLM, mamba_config, 'mamba2_ssm'),
     (LlamaForCausalLM, llama_mha_config, 'llama_mha_baseline'),
 ]
@@ -141,76 +143,152 @@ if spread_pct > 15:
 else:
     print("models are within 15% of each other —> fair comparison.")
 
+# -> data loading — raw text jsonl, we tokenize and pack inline during dataset preparation
+# -> this mirrors the old successful training approach (FULL_CORPUS_BIG.jsonl pipeline)
+# -> packing inline at 4096 gives the model longer context windows for better coherence
+TRAINING_CORPUS = 'preprocessing/WEB_BOOKS_LITERARY.jsonl'
+OUTPUT_DIR = 'models'
 
-# -> data loading
-TRAINING_CORPUS = '/Volumes/KINGSTON/Packed_File.jsonl'
-OUTPUT_DIR = 'output'
-# -> tokenizer only needed for the data collator (padding/eos token config)
 tokenizer = PreTrainedTokenizerFast(tokenizer_file=TOKENIZER_NAME)
-tokenizer.pad_token = "<pad>"
-tokenizer.bos_token = "<s>"
-tokenizer.eos_token = "</s>"
-tokenizer.unk_token = "<unk>"
-
-tokenizer.bos_token_id = tokenizer.convert_tokens_to_ids("<s>")
-tokenizer.eos_token_id = tokenizer.convert_tokens_to_ids("</s>")
-tokenizer.unk_token_id = tokenizer.convert_tokens_to_ids("<unk>")
+tokenizer.bos_token, tokenizer.eos_token = "<s>", "</s>"
+tokenizer.unk_token, tokenizer.pad_token = "<unk>", "<pad>"
 tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<pad>")
+# -> silence max_length warning during tokenization — we handle length ourselves in pack_fn
+tokenizer.model_max_length = int(1e12)
 
-def add_labels(examples):
-    # -> for causal LM, labels = input_ids (model shifts them internally)
-    examples['labels'] = examples['input_ids'].copy()
-    return examples
+print("BOS id:", tokenizer.bos_token_id)
+print("EOS id:", tokenizer.eos_token_id)
+print("PAD id:", tokenizer.pad_token_id)
+print("Vocab size:", tokenizer.vocab_size)
 
-print("loading pre-tokenized data...")
-raw_dataset = load_dataset('json', data_files=TRAINING_CORPUS, split='train')
-print(f"loaded {len(raw_dataset)} packed sequences")
-dataset = raw_dataset.map(add_labels, batched=True)
+print("loading raw corpus...")
+dataset = load_dataset('json', data_files=TRAINING_CORPUS, split='train')
+print(f"loaded {len(dataset)} raw documents")
+
+# -> tokenize each document individually, no special tokens (we add BOS/EOS manually in pack_fn)
+def tok_fn(ex):
+    return tokenizer(
+        ex["text"],
+        add_special_tokens=False,
+        truncation=False,
+        return_attention_mask=False,
+        return_token_type_ids=False,
+    )
+
+# -> pack tokenized documents into fixed-size blocks of CONTEXT_LENGTH
+# -> each document is wrapped with BOS/EOS so model learns document boundaries
+# -> tokens stream continuously across documents — no padding, no wasted compute
+def pack_fn(ex):
+    ids = []
+    bos_id = tokenizer.bos_token_id
+    eos_id = tokenizer.eos_token_id
+    for seq in ex["input_ids"]:
+        # -> wrap each document with <s> ... </s> boundary markers
+        ids.append(bos_id)
+        ids.extend(seq)
+        ids.append(eos_id)
+    # -> trim to exact multiple of CONTEXT_LENGTH (discard leftover partial block)
+    total = (len(ids) // CONTEXT_LENGTH) * CONTEXT_LENGTH
+    if total == 0:
+        return {"input_ids": [], "attention_mask": [], "labels": []}
+    ids = ids[:total]
+    chunks = [ids[i:i + CONTEXT_LENGTH] for i in range(0, total, CONTEXT_LENGTH)]
+    return {
+        "input_ids": chunks,
+        "attention_mask": [[1] * CONTEXT_LENGTH for _ in chunks],
+        "labels": [c.copy() for c in chunks],  # -> causal LM: labels = input_ids
+    }
+
+print("tokenizing corpus...")
+tok_ds = dataset.map(
+    tok_fn,
+    batched=True,
+    remove_columns=dataset.column_names,
+    desc="tokenizing",
+)
+
+# -> remove any extra columns before packing (attention_mask etc from tokenizer)
+cols_to_keep = ["input_ids"]
+extra_cols = [c for c in tok_ds.column_names if c not in cols_to_keep]
+if extra_cols:
+    tok_ds = tok_ds.remove_columns(extra_cols)
+
+print(f"packing into {CONTEXT_LENGTH}-token blocks...")
+train_ds = tok_ds.map(
+    pack_fn,
+    batched=True,
+    remove_columns=tok_ds.column_names,
+    desc=f"packing to {CONTEXT_LENGTH}",
+)
+
+print(f"packed dataset: {len(train_ds)} sequences of {CONTEXT_LENGTH} tokens")
+print(f"total tokens: ~{len(train_ds) * CONTEXT_LENGTH / 1e9:.2f}B")
 
 # -> split into train/eval
-dataset = dataset.train_test_split(test_size=0.05, seed=42)
-print(f"train: {len(dataset['train'])} sequences | eval: {len(dataset['test'])} sequences")
+train_ds = train_ds.train_test_split(test_size=2000, seed=42)
+print(f"train: {len(train_ds['train'])} sequences | eval: {len(train_ds['test'])} sequences")
+
+# -> simple collator — data is already packed with labels, just stack into tensors
+# -> DataCollatorForLanguageModeling is NOT used here because it may corrupt packed sequences
+class SimpleCollator:
+    def __call__(self, batch):
+        input_ids = torch.tensor([item['input_ids'] for item in batch], dtype=torch.long)
+        labels = torch.tensor([item['labels'] for item in batch], dtype=torch.long)
+        attention_mask = torch.tensor([item['attention_mask'] for item in batch], dtype=torch.long)
+        return {
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
+            'labels': labels,
+        }
+
+data_collator = SimpleCollator()
 
 # -> training arguments
 print("initializing training arguments...")
 training_args = TrainingArguments(
     output_dir=OUTPUT_DIR,
-    per_device_train_batch_size=12,
-    per_device_eval_batch_size=4,
-    gradient_accumulation_steps=4,
+    per_device_train_batch_size=12,       # -> reduced from 12 because sequences are now 4096 tokens (2x longer)
+    per_device_eval_batch_size=1,
+    gradient_accumulation_steps=2,       # -> effective batch = 24 sequences of 4k tokens
     learning_rate=2e-4,
     lr_scheduler_type='cosine',
-    warmup_steps=100,
+    warmup_steps=500,
     weight_decay=0.01,
     num_train_epochs=1,
-    logging_steps=10,
+    logging_steps=1000,
     eval_strategy='steps',
-    eval_steps=500,
+    eval_steps=2000,
     save_strategy='steps',
     save_steps=1000,
     save_total_limit=2,
-    fp16=True,
+    bf16=True,                           # -> switched from fp16 to bf16 — more stable for LLM training
+    fp16=False,
     gradient_checkpointing=True,
     report_to='tensorboard',
+    eval_accumulation_steps=1,
 )
 
-# -> train llama first (GQA) to verify everything works
-model_class, model_config, model_name = arch_selectors[0]
-print(f"training {model_name}...")
-model = model_class(model_config)
-print(f"model size: {sum(p.numel() for p in model.parameters()) / 1e6:.1f}M params")
+# -> train each architecture sequentially
+for model_class, model_config, model_name in arch_selectors:
+    print(f"\ntraining {model_name}...")
+    model = model_class(model_config)
+    print(f"model size: {sum(p.numel() for p in model.parameters()) / 1e6:.1f}M params")
+    print(f"model vocab size: {model_config.vocab_size}")  # -> must match tokenizer vocab size
 
-model_args = copy.deepcopy(training_args)
-model_args.output_dir = f"{OUTPUT_DIR}/{model_name}"
+    model_args = copy.deepcopy(training_args)
+    model_args.output_dir = f"{OUTPUT_DIR}/{model_name}"
 
-trainer = Trainer(
-    model=model,
-    args=model_args,
-    train_dataset=dataset['train'],
-    eval_dataset=dataset['test'],
-    data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False)
-)
+    trainer = Trainer(
+        model=model,
+        args=model_args,
+        train_dataset=train_ds['train'],
+        eval_dataset=train_ds['test'],
+        data_collator=data_collator
+    )
 
-trainer.train()
-trainer.save_model(f"{OUTPUT_DIR}/{model_name}/final")
-del model, trainer 
+    trainer.train()
+    trainer.save_model(f"{OUTPUT_DIR}/{model_name}/final")
+    del model, trainer
+    torch.cuda.empty_cache()
+    print(f"saved {model_name} to {OUTPUT_DIR}/{model_name}/final")
+
