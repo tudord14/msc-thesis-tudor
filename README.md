@@ -1,5 +1,9 @@
 # msc-thesis-tudor
 
+**Schedule** </br>
+-> **25th of May 2026 - send in the thesis** </br>
+-> **5th of June 2026 - oral presentation in Lund** </br>
+
 a) **Data stage:** </br>
 - here i have already built a 20GB jsonl file of web crawled Romanian text which we will use for training </br>
 - I also have around 5000 books in Romanian (170GB), in pdf format, which I have written a script to extract the text out of them -> we got around 3000 .txt clean files out of all of these (the others were in other formats or needed advanced OCR and time was not enough...)</br>
@@ -28,9 +32,11 @@ b) **Pretraining:** </br>
 
 c) **Evaluation and Quantization**
 - we will essentially quantize all the models into small variants and evaluate all the model on the same tasks </br>
-- we will teste efficiency (RAM, storage, tokens per second, time to first token, etc...) and performance on perplexity and other Romanian tasks (to be decided...) </br>
-- Week 16-22 March: </br>
+- Evaluations </br>
    -> We have successfully quantized all **four** models into four variants: FP16 GGUF, Q8_0, Q4_K_M, Q5_K_M  </br>
-   -> We tested Perplexity for all models and did the comparison with RO-GPT2 medium and large, and LLMic </br>
-   
+   -> We tested Perplexity for all models and did the comparison with RoGPT2 medium and large, and LLMic </br>
+   -> We tested RO-STS and LaRoSeDa for all models and did comparisons with other encoder models, and RoGPT2 </br>
+
+d) **!Writing time!**
+     
 
